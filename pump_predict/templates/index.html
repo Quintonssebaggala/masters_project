@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pump Dashboard - Real-Time Sensor Monitoring</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h2 { margin-top: 40px; }
+        .pump-container { border: 1px solid #ccc; padding: 15px; margin-bottom: 30px; border-radius: 8px; background-color: #f9f9f9; }
+        canvas { max-width: 100%; height: 300px; }
+        .status { font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<h1>Real-Time Pump Monitoring</h1>
+
+<div id="pump-dashboard"></div>
+
+<script>
+const pumps = ["Gunhill", "Muyenga", "Katosi"];
+const sensors = ["DE_motor", "NDE_pump", "Coupling", "flow", "pressure", "level"];
+const colors = ['red', 'blue', 'green', 'orange', 'purple', 'brown'];
+const chartData = {};
+
+// Initialize chart containers
+pumps.forEach(pump => {
+    const container = document.createElement("div");
+    container.className = "pump-container";
+    container.id = `container-${pump}`;
+
+    let html = `<h2>${pump} - Status: <span class="status" id="status-${pump}">Loading...</span></h2>`;
+    html += `<canvas id="${pump}-sensors"></canvas>`;
+    container.innerHTML = html;
+    document.getElementById("pump-dashboard").appendChild(container);
+
+    const ctx = document.getElementById(`${pump}-sensors`).getContext('2d');
+    chartData[pump] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: sensors.map((sensor, idx) => ({
+                label: sensor,
+                data: [],
+                borderColor: colors[idx % colors.length],
+                backgroundColor: colors[idx % colors.length] + '33', // semi-transparent
+                tension: 0.3,
+            }))
+        },
+        options: {
+            responsive: true,
+            animation: false,
+            scales: {
+                x: { display: true, title: { display: true, text: 'Time' } },
+                y: { display: true, title: { display: true, text: 'Sensor Value' } }
+            }
+        }
+    });
+});
+
+// Fetch latest data and update charts
+async function fetchLatest() {
+    try {
+        const res = await fetch("/latest");
+        const data = await res.json();
+
+        pumps.forEach(pump => {
+            const pumpData = data[pump];
+            const timestamp = new Date(pumpData.sensors[0].Time).toLocaleTimeString();
+            document.getElementById(`status-${pump}`).textContent = pumpData.status;
+
+            sensors.forEach((sensor, idx) => {
+                const value = pumpData.sensors[0][sensor];
+                const chart = chartData[pump];
+                chart.data.labels.push(timestamp);
+                chart.data.datasets[idx].data.push(value);
+
+                // Keep last 30 points
+                if (chart.data.labels.length > 100) {
+                    chart.data.labels.shift();
+                    chart.data.datasets[idx].data.shift();
+                }
+
+                chart.update();
+            });
+        });
+    } catch (err) {
+        console.error("Error fetching latest data:", err);
+    }
+}
+
+// Fetch every 5 seconds
+setInterval(fetchLatest, 5000);
+fetchLatest(); // initial fetch
+</script>
+
+</body>
+</html>
